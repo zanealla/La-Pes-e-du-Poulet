@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La Pesée du Poulet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+        .pesee-item {
+            transition: all 0.2s ease-in-out;
+        }
+        .pesee-item:hover {
+            transform: translateY(-2px);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background-color: #10B981;
+            color: white;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1001;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .locked {
+            position: relative;
+        }
+        .locked::after {
+            content: "🔒";
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 2px 5px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 0 0 0 5px;
+        }
+        .blurred {
+            filter: blur(3px);
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
+    <div class="max-w-7xl mx-auto">
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
+
+        <!-- Password Protection Overlay -->
+        <div id="passwordOverlay" class="fixed inset-0 bg-white bg-opacity-90 z-50 flex items-center justify-center hidden">
+            <div class="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Accès protégé</h2>
+                <p class="text-gray-600 mb-6">Veuillez entrer le mot de passe pour modifier cette pesée.</p>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
+                    <input type="password" id="passwordInput" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Entrez le mot de passe">
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="hidePasswordOverlay()" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                        Annuler
+                    </button>
+                    <button onclick="checkPassword()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Valider
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="mainContent" class="bg-white rounded-lg shadow-xl p-6">
+            <!-- Header with navigation -->
+            <div class="flex items-center gap-3 mb-6">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path>
+                </svg>
+                <div class="flex-1">
+                    <h1 class="text-3xl font-bold text-gray-800" id="currentPeseeTitle">La Pesée du Poulet</h1>
+                    <div class="text-sm text-gray-500 flex items-center gap-4 mt-1">
+                        <span id="currentPeseeDate">Date: -</span>
+                        <span id="currentPeseeAge">Âge: -</span>
+                        <span id="currentPeseeBuilding">Bâtiment: -</span>
+                    </div>
+                </div>
+                <div class="ml-auto flex gap-2 no-print">
+                    <button onclick="showPeseeListModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium">
+                        📋 Liste des Pesées
+                    </button>
+                    <button onclick="toggleLock()" id="lockButton" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm font-medium">
+                        🔓 Déverrouiller
+                    </button>
+                    <button onclick="duplicateCurrentPesee()" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium">
+                        Dupliquer
+                    </button>
+                    <button onclick="saveCurrentPeseeWithFeedback()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+                        Sauvegarder
+                    </button>
+                    <button onclick="showDeleteModal()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium">
+                        Supprimer
+                    </button>
+                    <button onclick="exportPDF()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium">
+                        PDF
+                    </button>
+                    <button onclick="exportCSV()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium">
+                        CSV
+                    </button>
+                    <button onclick="exportJSON()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+                        JSON
+                    </button>
+                    <button onclick="window.print()" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm font-medium">
+                        Print
+                    </button>
+                </div>
+            </div>
+
+            <!-- Rest of the content -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">L'Age (jours)</label>
+                    <input type="text" id="age" value="79" class="w-full px-3 py-2 border border-gray-300 rounded-md" onchange="saveCurrentPesee()" disabled>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <input type="text" id="date" value="07/09/2022" class="w-full px-3 py-2 border border-gray-300 rounded-md" onchange="saveCurrentPesee()" disabled>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bâtiment N°</label>
+                    <input type="text" id="building" value="" class="w-full px-3 py-2 border border-gray-300 rounded-md" onchange="saveCurrentPesee()" disabled>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Poids Norme (PN)</label>
+                    <input type="number" id="targetWeight" value="2045" class="w-full px-3 py-2 border border-gray-300 rounded-md" onchange="saveCurrentPesee()" disabled>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                <h2 class="text-lg font-semibold text-gray-800 mb-3">
+                    Pesées (108 poulets en 6 groupes de 18)
+                </h2>
+                <div id="groupsContainer" class="flex flex-col gap-6"></div>
+            </div>
+
+            <div class="mt-6 mb-4 flex gap-4 text-sm flex-wrap">
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-blue-200 border border-blue-400"></div>
+                    <span id="upperLimitText">≥ 0 (PMG+10%)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-yellow-100 border border-yellow-400"></div>
+                    <span>Normal</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-red-200 border border-red-400"></div>
+                    <span id="lowerLimitText">≤ 0 (PMG-10%)</span>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-r from-green-100 to-blue-100 rounded-lg p-6 mt-6">
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="bg-white rounded-lg p-4 shadow">
+                        <div class="text-xs text-gray-600 mb-1">PMG</div>
+                        <div id="pmg" class="text-xl font-bold text-green-700">0</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-4 shadow">
+                        <div class="text-xs text-gray-600 mb-1">PN</div>
+                        <div id="pn" class="text-xl font-bold text-blue-700">2045</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-4 shadow">
+                        <div class="text-xs text-gray-600 mb-1">ECART (%)</div>
+                        <div id="ecart" class="text-xl font-bold">0</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-4 shadow">
+                        <div class="text-xs text-gray-600 mb-1">H (≥PMG+10%)</div>
+                        <div id="h" class="text-xl font-bold text-blue-700">0</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-4 shadow">
+                        <div class="text-xs text-gray-600 mb-1">H %</div>
+                        <div id="hPercent" class="text-xl font-bold text-blue-700">0</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-4 shadow">
+                        <div class="text-xs text-gray-600 mb-1">Bas (≤PMG-10%)</div>
+                        <div id="low" class="text-xl font-bold text-red-700">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pesée List Modal -->
+    <div id="peseeListModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Gestion des Pesées</h3>
+                <button onclick="hidePeseeListModal()" class="text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="flex gap-2 mb-4">
+                <button onclick="showCreateModal()" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium">
+                    + Nouvelle Pesée
+                </button>
+                <button onclick="showImportModal()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+                    📥 Importer
+                </button>
+            </div>
+            
+            <!-- Search and Filter -->
+            <div class="mb-4">
+                <input type="text" id="searchPesees" placeholder="Rechercher une pesée..." 
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md mb-2"
+                       oninput="filterPesees()">
+                <div class="flex gap-2">
+                    <select id="sortPesees" onchange="sortPesees()" class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm">
+                        <option value="name">Trier par nom</option>
+                        <option value="date">Trier par date</option>
+                        <option value="age">Trier par âge</option>
+                        <option value="created">Trier par date de création</option>
+                    </select>
+                    <button onclick="toggleSortOrder()" id="sortOrder" class="px-3 py-2 bg-gray-200 rounded-md text-sm">
+                        ↑
+                    </button>
+                </div>
+            </div>
+            
+            <div id="peseeList" class="flex flex-col gap-2 max-h-64 overflow-y-auto mb-4"></div>
+            
+            <!-- Statistics -->
+            <div class="p-3 bg-gray-50 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Statistiques</div>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>Total: <span id="totalPesees" class="font-semibold">0</span></div>
+                    <div>Actif: <span id="activePesees" class="font-semibold">0</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Pesée Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-lg font-bold mb-4">Créer une nouvelle pesée</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nom de la pesée</label>
+                    <input type="text" id="newPeseeName" value="Pesée " class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Âge (jours)</label>
+                        <input type="text" id="newPeseeAge" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                        <input type="text" id="newPeseeDate" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bâtiment N°</label>
+                    <input type="text" id="newPeseeBuilding" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Poids Norme (PN)</label>
+                    <input type="number" id="newPeseeTargetWeight" value="2045" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="hideCreateModal()" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                        Annuler
+                    </button>
+                    <button onclick="createNewPeseeFromModal()" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                        Créer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-lg font-bold mb-4">Confirmer la suppression</h3>
+            <p class="mb-4">Êtes-vous sûr de vouloir supprimer la pesée "<span id="deletePeseeName"></span>" ?</p>
+            <div class="flex gap-2">
+                <button onclick="hideDeleteModal()" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                    Annuler
+                </button>
+                <button onclick="confirmDeletePesee()" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                    Supprimer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-lg font-bold mb-4">Importer une pesée</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Coller les données JSON</label>
+                    <textarea id="importJsonData" class="w-full h-40 px-3 py-2 border border-gray-300 rounded-md font-mono text-sm" placeholder='{"name": "Nouvelle pesée", ...}'></textarea>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="hideImportModal()" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                        Annuler
+                    </button>
+                    <button onclick="importPeseeFromJson()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Importer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const initialWeights = [
+            1795, 1980, 1845, 1695, 1690, 1675, 2060, 1825, 1690,
+            1830, 1830, 1800, 1755, 2040, 1555, 2050, 1775, 2110,
+            2325, 1940, 1930, 1900, 1470, 1865, 2155, 2185, 2195,
+            2065, 1990, 1975, 1980, 1900, 1760, 2210, 2080, 1990,
+            1710, 1740, 1945, 1835, 1475, 1835, 1820, 1950, 1720,
+            2070, 1770, 1740, 1665, 1965, 1830, 1800, 1810, 1635,
+            1930, 1830, 2010, 1855, 1735, 1900, 1975, 1980, 1945,
+            1955, 1930, 1995, 2030, 2045, 1970, 1870, 2150, 2150,
+            1875, 1810, 1775, 1660, 1795, 1775, 1800, 1560, 1820,
+            1840, 2025, 1990, 1785, 2330, 1895, 1875, 1990, 1675,
+            1480, 1715, 1725, 1540, 1560, 1625, 1710, 1845, 1480,
+            1880, 1880, 1730, 1685, 1780, 1755, 1775, 1750, 1850, 1710
+        ];
+
+        // Password management
+        const PASSWORD = "1234"; // Default password
+        let isUnlocked = false;
+
+        // Pesée Management
+        let pesees = {};
+        let currentPeseeId = null;
+        let sortOrder = 'asc';
+        let currentSort = 'name';
+
+        // ========== PASSWORD FUNCTIONS ==========
+        function showPasswordOverlay() {
+            document.getElementById('passwordOverlay').classList.remove('hidden');
+            document.getElementById('mainContent').classList.add('blurred');
+            document.getElementById('passwordInput').focus();
+        }
+
+        function hidePasswordOverlay() {
+            document.getElementById('passwordOverlay').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('blurred');
+            document.getElementById('passwordInput').value = '';
+        }
+
+        function checkPassword() {
+            const passwordInput = document.getElementById('passwordInput').value;
+            if (passwordInput === PASSWORD) {
+                isUnlocked = true;
+                updateLockState();
+                hidePasswordOverlay();
+                showToast('Accès autorisé!', 'success');
+            } else {
+                document.getElementById('passwordInput').value = '';
+                document.getElementById('passwordInput').focus();
+                showToast('Mot de passe incorrect!', 'error');
+            }
+        }
+
+        function toggleLock() {
+            if (isUnlocked) {
+                isUnlocked = false;
+                updateLockState();
+                showToast('Pesée verrouillée', 'warning');
+            } else {
+                showPasswordOverlay();
+            }
+        }
+
+        function updateLockState() {
+            const inputs = document.querySelectorAll('input');
+            const lockButton = document.getElementById('lockButton');
+            
+            if (isUnlocked) {
+                // Enable inputs
+                inputs.forEach(input => {
+                    if (input.id !== 'passwordInput') {
+                        input.disabled = false;
+                    }
+                });
+                
+                // Update button
+                lockButton.textContent = '🔒 Verrouiller';
+                lockButton.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+                lockButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                
+                // Remove locked styling
+                document.getElementById('mainContent').classList.remove('locked');
+            } else {
+                // Disable inputs
+                inputs.forEach(input => {
+                    if (input.id !== 'passwordInput' && 
+                        input.id !== 'searchPesees' && 
+                        input.id !== 'newPeseeName' && 
+                        input.id !== 'newPeseeAge' && 
+                        input.id !== 'newPeseeDate' && 
+                        input.id !== 'newPeseeBuilding' && 
+                        input.id !== 'newPeseeTargetWeight' && 
+                        input.id !== 'importJsonData') {
+                        input.disabled = true;
+                    }
+                });
+                
+                // Update button
+                lockButton.textContent = '🔓 Déverrouiller';
+                lockButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+                lockButton.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+                
+                // Add locked styling
+                document.getElementById('mainContent').classList.add('locked');
+            }
+        }
+
+        // ========== MODAL FUNCTIONS ==========
+        function showPeseeListModal() {
+            document.getElementById('peseeListModal').style.display = 'flex';
+            renderPeseeList();
+        }
+
+        function hidePeseeListModal() {
+            document.getElementById('peseeListModal').style.display = 'none';
+        }
+
+        function showCreateModal() {
+            document.getElementById('createModal').style.display = 'flex';
+            document.getElementById('newPeseeDate').value = new Date().toLocaleDateString('fr-FR');
+            document.getElementById('newPeseeName').value = `Pesée ${Object.keys(pesees).length + 1}`;
+            hidePeseeListModal();
+        }
+
+        function hideCreateModal() {
+            document.getElementById('createModal').style.display = 'none';
+        }
+
+        function showDeleteModal() {
+            if (!currentPeseeId) return;
+            
+            // Check if unlocked before allowing deletion
+            if (!isUnlocked) {
+                showToast('Veuillez déverrouiller la pesée pour la supprimer', 'error');
+                return;
+            }
+            
+            document.getElementById('deletePeseeName').textContent = pesees[currentPeseeId].name;
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function hideDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+
+        function showImportModal() {
+            document.getElementById('importModal').style.display = 'flex';
+            hidePeseeListModal();
+        }
+
+        function hideImportModal() {
+            document.getElementById('importModal').style.display = 'none';
+        }
+
+        // Toast notification function
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast';
+            
+            if (type === 'error') {
+                toast.style.backgroundColor = '#EF4444';
+            } else if (type === 'warning') {
+                toast.style.backgroundColor = '#F59E0B';
+            } else {
+                toast.style.backgroundColor = '#10B981';
+            }
+            
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // ========== PESEE MANAGEMENT FUNCTIONS ==========
+        
+        function initializePesees() {
+            // Try to load from localStorage first
+            const savedPesees = localStorage.getItem('pesees');
+            if (savedPesees) {
+                try {
+                    pesees = JSON.parse(savedPesees);
+                    const ids = Object.keys(pesees);
+                    if (ids.length > 0) {
+                        currentPeseeId = ids[0];
+                    } else {
+                        createDefaultPesee();
+                    }
+                } catch (e) {
+                    console.error('Error loading saved pesees:', e);
+                    createDefaultPesee();
+                }
+            } else {
+                createDefaultPesee();
+            }
+            
+            updatePeseeStatistics();
+            renderPeseeList();
+            if (currentPeseeId) {
+                loadPesee(currentPeseeId);
+            }
+            
+            // Initialize lock state
+            updateLockState();
+        }
+
+        function createDefaultPesee() {
+            const id = 'pesee_' + Date.now();
+            pesees[id] = {
+                id: id,
+                name: 'Pesée 1',
+                age: '79',
+                date: '07/09/2022',
+                building: '',
+                targetWeight: 2045,
+                weights: [...initialWeights],
+                createdAt: new Date().toISOString(),
+                modifiedAt: new Date().toISOString()
+            };
+            while (pesees[id].weights.length < 108) {
+                pesees[id].weights.push(0);
+            }
+            currentPeseeId = id;
+            savePesees();
+        }
+
+        function createNewPeseeFromModal() {
+            const name = document.getElementById('newPeseeName').value || `Pesée ${Object.keys(pesees).length + 1}`;
+            const age = document.getElementById('newPeseeAge').value || '';
+            const date = document.getElementById('newPeseeDate').value || new Date().toLocaleDateString('fr-FR');
+            const building = document.getElementById('newPeseeBuilding').value || '';
+            const targetWeight = parseFloat(document.getElementById('newPeseeTargetWeight').value) || 2045;
+            
+            const id = 'pesee_' + Date.now();
+            pesees[id] = {
+                id: id,
+                name: name,
+                age: age,
+                date: date,
+                building: building,
+                targetWeight: targetWeight,
+                weights: Array(108).fill(0),
+                createdAt: new Date().toISOString(),
+                modifiedAt: new Date().toISOString()
+            };
+            currentPeseeId = id;
+            savePesees();
+            updatePeseeStatistics();
+            renderPeseeList();
+            loadPesee(id);
+            hideCreateModal();
+            showToast(`Pesée "${name}" créée avec succès!`);
+        }
+
+        function duplicateCurrentPesee() {
+            if (!currentPeseeId) return;
+            
+            // Check if unlocked before allowing duplication
+            if (!isUnlocked) {
+                showToast('Veuillez déverrouiller la pesée pour la dupliquer', 'error');
+                return;
+            }
+            
+            const original = pesees[currentPeseeId];
+            const id = 'pesee_' + Date.now();
+            pesees[id] = {
+                ...original,
+                id: id,
+                name: `${original.name} (Copie)`,
+                createdAt: new Date().toISOString(),
+                modifiedAt: new Date().toISOString()
+            };
+            currentPeseeId = id;
+            savePesees();
+            updatePeseeStatistics();
+            renderPeseeList();
+            loadPesee(id);
+            showToast(`Pesée dupliquée avec succès!`);
+        }
+
+        function confirmDeletePesee() {
+            if (!currentPeseeId) return;
+            
+            if (Object.keys(pesees).length === 1) {
+                alert('Vous ne pouvez pas supprimer la dernière pesée!');
+                hideDeleteModal();
+                return;
+            }
+            
+            const deletedName = pesees[currentPeseeId].name;
+            delete pesees[currentPeseeId];
+            const ids = Object.keys(pesees);
+            currentPeseeId = ids[0];
+            savePesees();
+            updatePeseeStatistics();
+            renderPeseeList();
+            loadPesee(currentPeseeId);
+            hideDeleteModal();
+            showToast(`Pesée "${deletedName}" supprimée avec succès!`);
+        }
+
+        function importPeseeFromJson() {
+            try {
+                const jsonData = document.getElementById('importJsonData').value;
+                if (!jsonData) {
+                    alert('Veuillez coller des données JSON valides');
+                    return;
+                }
+                
+                const data = JSON.parse(jsonData);
+                const id = 'pesee_' + Date.now();
+                
+                pesees[id] = {
+                    id: id,
+                    name: data.name || `Pesée importée ${Object.keys(pesees).length + 1}`,
+                    age: data.age || '',
+                    date: data.date || new Date().toLocaleDateString('fr-FR'),
+                    building: data.building || '',
+                    targetWeight: data.targetWeight || 2045,
+                    weights: data.weights || Array(108).fill(0),
+                    createdAt: new Date().toISOString(),
+                    modifiedAt: new Date().toISOString()
+                };
+                
+                currentPeseeId = id;
+                savePesees();
+                updatePeseeStatistics();
+                renderPeseeList();
+                loadPesee(id);
+                hideImportModal();
+                showToast('Pesée importée avec succès!');
+            } catch (error) {
+                showToast('Erreur lors de l\'importation: ' + error.message, 'error');
+            }
+        }
+
+        function loadPesee(id) {
+            if (!pesees[id]) return;
+            
+            currentPeseeId = id;
+            const pesee = pesees[id];
+            
+            document.getElementById('age').value = pesee.age;
+            document.getElementById('date').value = pesee.date;
+            document.getElementById('building').value = pesee.building;
+            document.getElementById('targetWeight').value = pesee.targetWeight;
+            
+            // Update header information
+            document.getElementById('currentPeseeTitle').textContent = pesee.name;
+            document.getElementById('currentPeseeDate').textContent = `Date: ${pesee.date}`;
+            document.getElementById('currentPeseeAge').textContent = `Âge: ${pesee.age} jours`;
+            document.getElementById('currentPeseeBuilding').textContent = `Bâtiment: ${pesee.building || 'Non spécifié'}`;
+            
+            weights = [...pesee.weights];
+            renderGroups();
+            renderPeseeList();
+            
+            // Close the pesee list modal if it's open
+            hidePeseeListModal();
+            
+            // Lock the pesée after loading
+            isUnlocked = false;
+            updateLockState();
+        }
+
+        function saveCurrentPesee() {
+            if (!currentPeseeId) return;
+            
+            // Check if unlocked before allowing save
+            if (!isUnlocked) {
+                showToast('Veuillez déverrouiller la pesée pour la modifier', 'error');
+                return false;
+            }
+            
+            pesees[currentPeseeId] = {
+                ...pesees[currentPeseeId],
+                age: document.getElementById('age').value,
+                date: document.getElementById('date').value,
+                building: document.getElementById('building').value,
+                targetWeight: parseFloat(document.getElementById('targetWeight').value) || 2045,
+                weights: [...weights],
+                modifiedAt: new Date().toISOString()
+            };
+            savePesees();
+            renderPeseeList();
+            return true;
+        }
+
+        function saveCurrentPeseeWithFeedback() {
+            if (saveCurrentPesee()) {
+                showToast('Pesée sauvegardée avec succès!');
+            } else {
+                showToast('Erreur lors de la sauvegarde', 'error');
+            }
+        }
+
+        function renamePesee(id, event) {
+            if (event) event.stopPropagation();
+            
+            // Check if unlocked before allowing rename
+            if (!isUnlocked) {
+                showToast('Veuillez déverrouiller la pesée pour la renommer', 'error');
+                return;
+            }
+            
+            const newName = prompt('Nouveau nom:', pesees[id].name);
+            if (newName && newName.trim()) {
+                pesees[id].name = newName.trim();
+                pesees[id].modifiedAt = new Date().toISOString();
+                savePesees();
+                renderPeseeList();
+                if (id === currentPeseeId) {
+                    document.getElementById('currentPeseeTitle').textContent = newName.trim();
+                }
+                showToast('Nom modifié avec succès!');
+            }
+        }
+
+        function savePesees() {
+            localStorage.setItem('pesees', JSON.stringify(pesees));
+        }
+
+        function updatePeseeStatistics() {
+            const total = Object.keys(pesees).length;
+            const active = Object.values(pesees).filter(p => 
+                p.weights && p.weights.some(w => w > 0)
+            ).length;
+            
+            document.getElementById('totalPesees').textContent = total;
+            document.getElementById('activePesees').textContent = active;
+        }
+
+        function filterPesees() {
+            const searchTerm = document.getElementById('searchPesees').value.toLowerCase();
+            renderPeseeList(searchTerm);
+        }
+
+        function sortPesees() {
+            currentSort = document.getElementById('sortPesees').value;
+            renderPeseeList();
+        }
+
+        function toggleSortOrder() {
+            sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+            document.getElementById('sortOrder').textContent = sortOrder === 'asc' ? '↑' : '↓';
+            renderPeseeList();
+        }
+
+        function renderPeseeList(searchTerm = '') {
+            const container = document.getElementById('peseeList');
+            container.innerHTML = '';
+            
+            let peseesArray = Object.values(pesees);
+            
+            // Apply search filter
+            if (searchTerm) {
+                peseesArray = peseesArray.filter(pesee => 
+                    pesee.name.toLowerCase().includes(searchTerm) ||
+                    pesee.date.includes(searchTerm) ||
+                    pesee.building.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // Apply sorting
+            peseesArray.sort((a, b) => {
+                let aValue, bValue;
+                
+                switch (currentSort) {
+                    case 'name':
+                        aValue = a.name.toLowerCase();
+                        bValue = b.name.toLowerCase();
+                        break;
+                    case 'date':
+                        aValue = new Date(a.date.split('/').reverse().join('-'));
+                        bValue = new Date(b.date.split('/').reverse().join('-'));
+                        break;
+                    case 'age':
+                        aValue = parseInt(a.age) || 0;
+                        bValue = parseInt(b.age) || 0;
+                        break;
+                    case 'created':
+                        aValue = new Date(a.createdAt);
+                        bValue = new Date(b.createdAt);
+                        break;
+                    default:
+                        aValue = a.name.toLowerCase();
+                        bValue = b.name.toLowerCase();
+                }
+                
+                if (sortOrder === 'asc') {
+                    return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+                } else {
+                    return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+                }
+            });
+            
+            peseesArray.forEach(pesee => {
+                const div = document.createElement('div');
+                div.className = `pesee-item flex items-center gap-2 px-3 py-2 rounded-md border-2 cursor-pointer ${
+                    pesee.id === currentPeseeId 
+                        ? 'bg-blue-100 border-blue-500' 
+                        : 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                }`;
+                
+                const hasData = pesee.weights && pesee.weights.some(w => w > 0);
+                const dataIndicator = hasData ? 
+                    '<span class="w-2 h-2 bg-green-500 rounded-full" title="Contient des données"></span>' : 
+                    '<span class="w-2 h-2 bg-gray-300 rounded-full" title="Vide"></span>';
+                
+                div.innerHTML = `
+                    ${dataIndicator}
+                    <span class="flex-1 font-medium truncate" onclick="loadPesee('${pesee.id}')">${pesee.name}</span>
+                    <span class="text-xs text-gray-500">${pesee.date}</span>
+                    <button onclick="renamePesee('${pesee.id}', event)" class="text-gray-600 hover:text-blue-600 text-sm" title="Renommer">
+                        ✏️
+                    </button>
+                `;
+                
+                container.appendChild(div);
+            });
+            
+            if (peseesArray.length === 0) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'text-center text-gray-500 py-4';
+                emptyDiv.textContent = 'Aucune pesée trouvée';
+                container.appendChild(emptyDiv);
+            }
+        }
+
+        // ========== WEIGHT MANAGEMENT FUNCTIONS ==========
+        let weights = [];
+
+        function calculateAverage(arr) {
+            const filtered = arr.filter(w => w > 0);
+            if (filtered.length === 0) return 0;
+            const sum = filtered.reduce((a, b) => a + b, 0);
+            return sum / filtered.length;
+        }
+
+        function calculateStats() {
+            const targetWeight = parseFloat(document.getElementById('targetWeight').value) || 2045;
+            const validWeights = weights.filter(w => w > 0);
+            
+            if (validWeights.length === 0) {
+                return { pmg: 0, pn: targetWeight, ecart: 0, h: 0, hPercent: 0, low: 0, upperLimit: 0, lowerLimit: 0 };
+            }
+            
+            const groupAverages = [];
+            for (let i = 0; i < 6; i++) {
+                const startIndex = i * 18;
+                const group = weights.slice(startIndex, startIndex + 18);
+                const groupAvg = calculateAverage(group);
+                if (groupAvg > 0) {
+                    groupAverages.push(groupAvg);
+                }
+            }
+            
+            const pmg = groupAverages.length > 0 
+                ? groupAverages.reduce((a, b) => a + b, 0) / groupAverages.length 
+                : 0;
+            
+            const roundedPmg = Math.ceil(pmg);
+            const ecart = ((roundedPmg - targetWeight) / roundedPmg) * 100;
+            const upperLimit = roundedPmg + (roundedPmg / 10);
+            const lowerLimit = roundedPmg - (roundedPmg / 10);
+            const aboveTarget = validWeights.filter(w => w >= upperLimit).length;
+            const belowTarget = validWeights.filter(w => w <= lowerLimit).length;
+            const totalPesees = validWeights.length;
+            const hPercent = ((totalPesees - (aboveTarget + belowTarget)) / totalPesees) * 100;
+            
+            return { pmg: roundedPmg, pn: targetWeight, ecart, h: aboveTarget, hPercent, low: belowTarget, upperLimit, lowerLimit };
+        }
+
+        function updateStats() {
+            const stats = calculateStats();
+            document.getElementById('pmg').textContent = stats.pmg;
+            document.getElementById('pn').textContent = stats.pn;
+            
+            const ecartEl = document.getElementById('ecart');
+            ecartEl.textContent = stats.ecart.toFixed(2);
+            ecartEl.className = `text-xl font-bold ${stats.ecart < 0 ? 'text-red-600' : 'text-green-600'}`;
+            
+            document.getElementById('h').textContent = stats.h;
+            document.getElementById('hPercent').textContent = stats.hPercent.toFixed(2);
+            document.getElementById('low').textContent = stats.low;
+            document.getElementById('upperLimitText').textContent = `≥ ${Math.round(stats.upperLimit / 5) * 5} (PMG+10%)`;
+            document.getElementById('lowerLimitText').textContent = `≤ ${Math.round(stats.lowerLimit / 5) * 5} (PMG-10%)`;
+            
+            return stats;
+        }
+
+        function getColorClass(weight, stats) {
+            if (weight === 0) return 'bg-gray-100 text-gray-400 border-gray-300';
+            if (weight >= stats.upperLimit) return 'bg-blue-200 text-blue-900 border-blue-400';
+            if (weight <= stats.lowerLimit) return 'bg-red-200 text-red-900 border-red-400';
+            return 'bg-white-100 text-black-900 border-black-400';
+        }
+
+        function updateWeight(index, value) {
+            // Check if unlocked before allowing weight update
+            if (!isUnlocked) {
+                showToast('Veuillez déverrouiller la pesée pour modifier les poids', 'error');
+                return;
+            }
+            
+            weights[index] = value === '' ? 0 : parseFloat(value) || 0;
+            saveCurrentPesee();
+            renderGroups();
+        }
+
+        function renderGroups() {
+            const stats = updateStats();
+            const container = document.getElementById('groupsContainer');
+            container.innerHTML = '';
+            
+            for (let groupIndex = 0; groupIndex < 6; groupIndex++) {
+                const startIndex = groupIndex * 18;
+                const group = weights.slice(startIndex, startIndex + 18);
+                const average = calculateAverage(group);
+                
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'border border-gray-300 rounded-lg p-3';
+                
+                const header = document.createElement('div');
+                header.className = 'font-semibold mb-2 text-gray-700 flex items-center justify-between';
+                header.innerHTML = `
+                    <span>Groupe ${groupIndex + 1}</span>
+                    <span class="text-sm bg-purple-100 px-3 py-1 rounded border border-purple-300">
+                        Moyenne: ${Math.ceil(average)}
+                    </span>
+                `;
+                groupDiv.appendChild(header);
+                
+                const rowsDiv = document.createElement('div');
+                rowsDiv.className = 'flex flex-col gap-2';
+                
+                const row1 = document.createElement('div');
+                row1.className = 'grid grid-cols-9 gap-2';
+                for (let i = 0; i < 9; i++) {
+                    const absoluteIndex = startIndex + i;
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.value = weights[absoluteIndex] === 0 ? '' : weights[absoluteIndex];
+                    input.placeholder = '0';
+                    input.disabled = !isUnlocked;
+                    input.className = `w-full p-2 text-center text-sm font-mono rounded border ${getColorClass(weights[absoluteIndex], stats)}`;
+                    input.addEventListener('input', (e) => updateWeight(absoluteIndex, e.target.value));
+                    row1.appendChild(input);
+                }
+                
+                const row2 = document.createElement('div');
+                row2.className = 'grid grid-cols-9 gap-2';
+                for (let i = 9; i < 18; i++) {
+                    const absoluteIndex = startIndex + i;
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.value = weights[absoluteIndex] === 0 ? '' : weights[absoluteIndex];
+                    input.placeholder = '0';
+                    input.disabled = !isUnlocked;
+                    input.className = `w-full p-2 text-center text-sm font-mono rounded border ${getColorClass(weights[absoluteIndex], stats)}`;
+                    input.addEventListener('input', (e) => updateWeight(absoluteIndex, e.target.value));
+                    row2.appendChild(input);
+                }
+                
+                rowsDiv.appendChild(row1);
+                rowsDiv.appendChild(row2);
+                groupDiv.appendChild(rowsDiv);
+                container.appendChild(groupDiv);
+            }
+        }
+
+        // ========== EXPORT FUNCTIONS ==========
+        function getCellColor(weight, stats) {
+            if (weight === 0) return { fill: [240, 240, 240], text: [160, 160, 160] }; // Gray
+            if (weight >= stats.upperLimit) return { fill: [191, 219, 254], text: [30, 58, 138] }; // Blue
+            if (weight <= stats.lowerLimit) return { fill: [254, 202, 202], text: [127, 29, 29] }; // Red
+            return { fill: [255, 255, 255], text: [0, 0, 0] }; // Yellow
+        }
+        
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const stats = calculateStats();
+            
+            // Set colors for different elements
+            const primaryColor = [0, 0, 0]; // Black
+            const secondaryColor = [100, 100, 100]; // Dark gray
+            const accentColor = [150, 150, 150]; // Light gray
+            
+            // Set font and styles for header
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(16);
+            doc.setTextColor(...primaryColor);
+            
+            // Header information - styled to match the PDF
+            doc.text(`L'Age : ${document.getElementById('age').value}`, 20, 20);
+            
+            // Date aligned to the right
+            const dateText = document.getElementById('date').value;
+            const dateWidth = doc.getTextWidth(dateText);
+            doc.text(dateText, 190 - dateWidth, 20);
+            
+            // Main title - centered with custom styling
+            doc.setFontSize(18);
+            doc.text("La pesée du poulet", 105, 30, { align: 'center' });
+            
+            // Building information
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "normal");
+            doc.text(`Bâtiment N° : ${document.getElementById('building').value || ''}`, 20, 40);
+            
+            // Group names as in the PDF example
+            const groupNames = ["G1", "G2", "G3", "G4", "G5", "G6"];
+            
+            // Table settings
+            const startX = 20;
+            let startY = 50;
+            const cellWidth = 18;
+            const cellHeight = 7;
+            const valuesPerRow = 9;
+            
+            // Draw tables for each group with enhanced styling
+            for (let groupIndex = 0; groupIndex < 6; groupIndex++) {
+                const groupName = groupNames[groupIndex];
+                const startIndex = groupIndex * 18;
+                const groupWeights = weights.slice(startIndex, startIndex + 18);
+                
+                // Calculate group average
+                const groupAvg = calculateAverage(groupWeights);
+                
+                // Group header with enhanced styling - colored background and centered text
+                const headerHeight = 6;
+                const headerY = startY - 1;
+                
+                // Draw colored background for header
+                doc.setFillColor(0, 0, 0); // Green color
+                doc.rect(startX, headerY, valuesPerRow * cellWidth, headerHeight, 'F');
+                
+                // Draw header border
+                doc.setDrawColor(100, 100, 100); // Darker green border
+                doc.setLineWidth(0.3);
+                doc.rect(startX, headerY, valuesPerRow * cellWidth, headerHeight);
+                
+                // Add centered text on header
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(255, 255, 255); // White text
+                const headerCenterX = startX + (valuesPerRow * cellWidth) / 2;
+                doc.text(groupName, headerCenterX, headerY + 4, { align: 'center' });
+                
+                // Reset text color to black for values
+                doc.setTextColor(...primaryColor);
+                
+                // Draw table with borders
+                doc.setDrawColor(...accentColor);
+                doc.setLineWidth(0.2);
+                
+                // First row of values
+                for (let i = 0; i < valuesPerRow; i++) {
+                    const x = startX + (i * cellWidth);
+                    const y = startY + 5;
+                    const weight = groupWeights[i] || 0;
+                    const colors = getCellColor(weight, stats);
+                    
+                    // Fill cell with color
+                    doc.setFillColor(...colors.fill);
+                    doc.rect(x, y, cellWidth, cellHeight, 'F');
+                    
+                    // Draw cell border
+                    doc.setDrawColor(...accentColor);
+                    doc.rect(x, y, cellWidth, cellHeight);
+                    
+                    // Add value with appropriate text color
+                    if (weight > 0) {
+                        doc.setFontSize(9);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.text);
+                        doc.text(weight.toString(), x + cellWidth/2, y + 4.5, { align: 'center' });
+                    }
+                }
+                
+                // Second row of values
+                for (let i = 0; i < valuesPerRow; i++) {
+                    const x = startX + (i * cellWidth);
+                    const y = startY + 12;
+                    const weight = groupWeights[i + valuesPerRow] || 0;
+                    const colors = getCellColor(weight, stats);
+                    
+                    // Fill cell with color
+                    doc.setFillColor(...colors.fill);
+                    doc.rect(x, y, cellWidth, cellHeight, 'F');
+                    
+                    // Draw cell border
+                    doc.setDrawColor(...accentColor);
+                    doc.rect(x, y, cellWidth, cellHeight);
+                    
+                    // Add value with appropriate text color
+                    if (weight > 0) {
+                        doc.setFontSize(9);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.text);
+                        doc.text(weight.toString(), x + cellWidth/2, y + 4.5, { align: 'center' });
+                    }
+                }
+                
+                // Add average at the end of the second row with special styling
+                const avgX = startX + (valuesPerRow * cellWidth);
+                const avgY = startY + 12;
+                
+                // Draw cell for average with different background
+                doc.setFillColor(240, 240, 240); // Light gray background
+                doc.rect(avgX, avgY, cellWidth, cellHeight, 'F');
+                doc.rect(avgX, avgY, cellWidth, cellHeight); // Border
+                
+                // Add average value with bold font
+                doc.setFontSize(9);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...primaryColor);
+                doc.text(Math.ceil(groupAvg).toString(), avgX + cellWidth/2, avgY + 4.5, { align: 'center' });
+                
+                // Move to next group position
+                startY += 25;
+            }
+            
+            // Statistics section - TABLE FORMAT like the image
+            const statsY = startY + 10;
+            const pageWidth = 210; // A4 width in mm
+            
+            // Table dimensions
+            const tableWidth = 160;
+            const tableStartX = (pageWidth - tableWidth) / 2; // Center the table
+            const rowHeight = 8;
+            const col1Width = 15;  // Symbol column (>, H≤)
+            const col2Width = 30;  // First value
+            const col3Width = 30;  // Second value
+            const col4Width = 20;  // Third value
+            const col5Width = 35;  // PMG/PN/ECART labels
+            const col6Width = 30;  // PMG/PN/ECART values
+            
+            // Calculate limits
+            const upperLimit = Math.round(stats.upperLimit * 10) / 10;
+            const lowerLimit = Math.round(stats.lowerLimit * 10) / 10;
+            
+            // Row 1: PMG with blue background (>)
+            let currentY = statsY;
+            
+            // Symbol cell ">"
+            doc.setFillColor(0, 0, 139); // Dark blue
+			doc.setDrawColor(255, 255, 255);
+            doc.rect(tableStartX, currentY, col1Width, rowHeight, 'FD');
+            doc.setLineWidth(0.3);
+            doc.rect(tableStartX, currentY, col1Width, rowHeight);
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.text("H>=", tableStartX + col1Width / 2, currentY + 5.5, { align: 'center' });
+            
+            // Value cells for blue row
+            const blueRowCells = [
+                { value: upperLimit.toFixed(1), width: col2Width },
+                { value: (Math.round(stats.upperLimit / 5) * 5).toString(), width: col3Width },
+                { value: stats.h.toString(), width: col4Width }
+            ];
+            
+            let currentX = tableStartX + col1Width;
+            blueRowCells.forEach(cell => {
+                doc.setFillColor(173, 216, 230); // Light blue
+				doc.setDrawColor(255, 255, 255);
+                doc.rect(currentX, currentY, cell.width, rowHeight, 'FD');
+                doc.rect(currentX, currentY, cell.width, rowHeight);
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "bold");
+                doc.text(cell.value, currentX + cell.width / 2, currentY + 5.5, { align: 'center' });
+                currentX += cell.width;
+            });
+            
+            // PMG label and value
+			doc.setDrawColor(255, 255, 255);
+            doc.setFillColor(255, 255, 255); // White
+            doc.rect(currentX, currentY, col5Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col5Width, rowHeight);
+            doc.setTextColor(0, 0, 0);
+            doc.text("PMG =", currentX + col5Width / 2, currentY + 5.5, { align: 'center' });
+            currentX += col5Width;
+            
+            doc.setFillColor(0, 0, 0); // Black
+            doc.rect(currentX, currentY, col6Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col6Width, rowHeight);
+            doc.setTextColor(255, 255, 255);
+            doc.text(stats.pmg.toString(), currentX + col6Width / 2, currentY + 5.5, { align: 'center' });
+            
+            // Row 2: PN with red background (H≤)
+            currentY += rowHeight;
+            
+            // Symbol cell "H≤"
+            doc.setFillColor(139, 0, 0); // Dark red
+			doc.setDrawColor(255, 255, 255);
+            doc.rect(tableStartX, currentY, col1Width, rowHeight, 'FD');
+            doc.rect(tableStartX, currentY, col1Width, rowHeight);
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.text("H<=", tableStartX + col1Width / 2, currentY + 5.5, { align: 'center' });
+            
+            // Value cells for red row
+            const redRowCells = [
+                { value: lowerLimit.toFixed(1), width: col2Width },
+                { value: (Math.round(stats.lowerLimit / 5) * 5).toString(), width: col3Width },
+                { value: stats.low.toString(), width: col4Width }
+            ];
+            
+            currentX = tableStartX + col1Width;
+            redRowCells.forEach(cell => {
+                doc.setFillColor(255, 182, 193); // Light red/pink
+                doc.rect(currentX, currentY, cell.width, rowHeight, 'FD');
+                doc.rect(currentX, currentY, cell.width, rowHeight);
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "bold");
+                doc.text(cell.value, currentX + cell.width / 2, currentY + 5.5, { align: 'center' });
+                currentX += cell.width;
+            });
+            
+            // PN label and value
+            doc.setFillColor(255, 255, 255); // White
+			doc.setDrawColor(255, 255, 255);
+            doc.rect(currentX, currentY, col5Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col5Width, rowHeight);
+            doc.setTextColor(0, 0, 0);
+            doc.text("PN =", currentX + col5Width / 2, currentY + 5.5, { align: 'center' });
+            currentX += col5Width;
+            
+            doc.setFillColor(0, 0, 0); // Black
+            doc.rect(currentX, currentY, col6Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col6Width, rowHeight);
+            doc.setTextColor(255, 255, 255);
+            doc.text(stats.pn.toString(), currentX + col6Width / 2, currentY + 5.5, { align: 'center' });
+            
+            // Row 3: ECART and H%
+            currentY += rowHeight;
+            
+            // Empty cell
+            doc.setFillColor(255, 255, 255);
+            doc.rect(tableStartX, currentY, col1Width + col2Width + col3Width + col4Width, rowHeight, 'FD');
+            doc.rect(tableStartX, currentY, col1Width + col2Width + col3Width + col4Width, rowHeight);
+            doc.setDrawColor(255, 255, 255);
+
+			
+            // ECART label
+            currentX = tableStartX + col1Width + col2Width + col3Width + col4Width;
+            doc.setFillColor(255, 255, 255);
+			doc.setDrawColor(255, 255, 255);
+            doc.rect(currentX, currentY, col5Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col5Width, rowHeight);
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+            doc.text("ECART =", currentX + col5Width / 2, currentY + 5.5, { align: 'center' });
+            currentX += col5Width;
+            
+            // ECART value - colored based on positive/negative
+            const ecartColor = stats.ecart >= 0 ? [0, 128, 0] : [139, 0, 0]; // Green or dark red
+            doc.setFillColor(...ecartColor);
+            doc.rect(currentX, currentY, col6Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col6Width, rowHeight);
+            doc.setTextColor(255, 255, 255);
+			doc.setDrawColor(255, 255, 255);
+            const ecartValue = (stats.ecart >= 0 ? '+' : '') + stats.ecart.toFixed(4);
+            doc.text(ecartValue, currentX + col6Width / 2, currentY + 5.5, { align: 'center' });
+            
+            // Row 4: H%
+            currentY += rowHeight;
+            
+            // Empty cells
+            doc.setFillColor(255, 255, 255);
+			doc.setDrawColor(255, 255, 255);
+            doc.rect(tableStartX, currentY, col1Width + col2Width + col3Width + col4Width, rowHeight, 'FD');
+            doc.rect(tableStartX, currentY, col1Width + col2Width + col3Width + col4Width, rowHeight);
+            
+            // H% label
+            currentX = tableStartX + col1Width + col2Width + col3Width + col4Width;
+            doc.setFillColor(255, 255, 255);
+            doc.rect(currentX, currentY, col5Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col5Width, rowHeight);
+            doc.setTextColor(0, 0, 0);
+            doc.text("H % =", currentX + col5Width / 2, currentY + 5.5, { align: 'center' });
+            currentX += col5Width;
+            
+            // H% value
+            doc.setFillColor(0, 0, 0); // Black
+            doc.rect(currentX, currentY, col6Width, rowHeight, 'FD');
+            doc.rect(currentX, currentY, col6Width, rowHeight);
+            doc.setTextColor(255, 255, 255);
+            doc.text(stats.hPercent.toFixed(5), currentX + col6Width / 2, currentY + 5.5, { align: 'center' });
+                        
+            // Save the PDF
+            const pesee = pesees[currentPeseeId];
+            doc.save(`pesee-poulet-${pesee.name.replace(/\s+/g, '-')}.pdf`);
+        }
+		
+		function upperLimitText() {
+           const stats = calculateStats();
+           return `≥ ${Math.round(stats.upperLimit / 5) * 5} (PMG+10%)`;
+           }
+
+        function lowerLimitText() {
+          const stats = calculateStats();
+          return `≤ ${Math.round(stats.lowerLimit / 5) * 5} (PMG-10%)`;
+           }
+
+        function exportCSV() {
+            const stats = calculateStats();
+            let csv = 'Groupe,Position,Poids\n';
+            
+            for (let i = 0; i < 6; i++) {
+                const startIndex = i * 18;
+                const group = weights.slice(startIndex, startIndex + 18);
+                group.forEach((weight, index) => {
+                    csv += `${i + 1},${index + 1},${weight}\n`;
+                });
+            }
+            
+            csv += '\n\nStatistiques\n';
+            csv += `PMG,${stats.pmg}\n`;
+            csv += `PN,${stats.pn}\n`;
+            csv += `ECART,${stats.ecart.toFixed(2)}\n`;
+            csv += `H,${stats.h}\n`;
+            csv += `H%,${stats.hPercent.toFixed(2)}\n`;
+            csv += `Bas,${stats.low}\n`;
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const pesee = pesees[currentPeseeId];
+            a.download = `pesee-poulet-${pesee.name.replace(/\s+/g, '-')}.csv`;
+            a.click();
+        }
+        
+        function exportJSON() {
+            const stats = calculateStats();
+            const data = {
+                info: {
+                    age: document.getElementById('age').value,
+                    date: document.getElementById('date').value,
+                    batiment: document.getElementById('building').value,
+                    pn: stats.pn
+                },
+                statistiques: {
+                    pmg: stats.pmg,
+                    pn: stats.pn,
+                    ecart: parseFloat(stats.ecart.toFixed(2)),
+                    h: stats.h,
+                    hPercent: parseFloat(stats.hPercent.toFixed(2)),
+                    bas: stats.low
+                },
+                groupes: []
+            };
+            
+            for (let i = 0; i < 6; i++) {
+                const startIndex = i * 18;
+                const group = weights.slice(startIndex, startIndex + 18);
+                const average = calculateAverage(group);
+                data.groupes.push({
+                    numero: i + 1,
+                    moyenne: Math.ceil(average),
+                    poids: group
+                });
+            }
+            
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const pesee = pesees[currentPeseeId];
+            a.download = `pesee-poulet-${pesee.name.replace(/\s+/g, '-')}.json`;
+            a.click();
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializePesees();
+        });
+    </script>
+</body>
+</html>
