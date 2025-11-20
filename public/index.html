@@ -721,8 +721,8 @@ function updateLockState() {
             date: new Date().toLocaleDateString('fr-FR'),
             building: "",
             targetWeight: 2045,
-            weights: [...initialWeights],
-            groupMultipliers: [...groupMultipliers],
+            weights: Array(108).fill(0),
+            groupMultipliers: [1, 1, 1, 1, 1, 1],
             createdAt: new Date().toISOString(),
             modifiedAt: new Date().toISOString()
         };
@@ -755,8 +755,8 @@ function updateLockState() {
             date: date || new Date().toLocaleDateString('fr-FR'),
             building: building,
             targetWeight: targetWeight,
-            weights: [...initialWeights],
-            groupMultipliers: [...groupMultipliers],
+            weights: Array(108).fill(0),
+            groupMultipliers: [1, 1, 1, 1, 1, 1],
             createdAt: new Date().toISOString(),
             modifiedAt: new Date().toISOString()
         };
@@ -858,14 +858,9 @@ async function saveCurrentPesee() {
     }
 
     async function savePesees() {
-        try {
-            localStorage.setItem('pesees', JSON.stringify(pesees));
-            return { success: true };
-        } catch (error) {
-            console.error('Error saving pesees:', error);
-            return { success: false };
-        }
-    }
+    return { success: true }; // No saving
+}
+
 
     function deletePeseeFromList(id, event) {
         if (event) event.stopPropagation();
