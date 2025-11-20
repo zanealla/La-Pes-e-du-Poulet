@@ -5,21 +5,79 @@ const path = require('path');
 const app = express();
 const port = 7000;
 
-const dataFile = path.join(__dirname, 'data', 'pesees.json');
+// Create data directory if it doesn't exist
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+}
 
-app.use(express.json());
+const dataFile = path.join(dataDir, 'pesees.json');
+
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Enable CORS
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    next();
+});
+
 function readData() {
-    if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, "{}");
-    return JSON.parse(fs.readFileSync(dataFile, "utf8") || "{}");
+    try {
+        if (!fs.existsSync(dataFile)) {
+            fs.writeFileSync(dataFile, "{}");
+            return {};
+        }
+        const data = fs.readFileSync(dataFile, "utf8");
+        return data ? JSON.parse(data) : {};
+    } catch (error) {
+        console.error('Error reading data file:', error);
+        return {};
+    }
 }
 
 function writeData(obj) {
-    fs.writeFileSync(dataFile, JSON.stringify(obj, null, 2));
+    try {
+        fs.writeFileSync(dataFile, JSON.stringify(obj, null, 2));
+        return true;
+    } catch (error) {
+        console.error('Error writing data file:', error);
+        return false;
+    }
 }
 
-app.get('/api/pesees', (req, res) => res.json(readData()));
-app.post('/api/pesees', (req, res) => { writeData(req.body); res.json({status:'saved'}); });
+app.get('/api/pesees', (req, res) => {
+    try {
+        const data = readData();
+        res.json(data);
+    } catch (error) {
+        console.error('Error in GET /api/pesees:', error);
+        res.status(500).json({ error: 'Failed to read data' });
+    }
+});
 
-app.listen(port, ()=>console.log('Running on http://localhost:' + port));
+app.post('/api/pesees', (req, res) => {
+    try {
+        const success = writeData(req.body);
+        if (success) {
+            res.json({ status: 'saved', timestamp: new Date().toISOString() });
+        } else {
+            res.status(500).json({ error: 'Failed to save data' });
+        }
+    } catch (error) {
+        console.error('Error in POST /api/pesees:', error);
+        res.status(500).json({ error: 'Failed to save data' });
+    }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+    console.log(`Data file: ${dataFile}`);
+});

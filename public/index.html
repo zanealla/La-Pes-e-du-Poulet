@@ -73,9 +73,49 @@
             pointer-events: none;
             user-select: none;
         }
+        .offline-indicator {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: #F59E0B;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1002;
+        }
+        .tab-button {
+            padding: 8px 16px;
+            border: none;
+            background: #f3f4f6;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab-button.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .pesee-item button {
+            transition: all 0.2s ease-in-out;
+        }
+        .pesee-item button:hover {
+            transform: scale(1.1);
+        }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
+    <div id="offlineIndicator" class="offline-indicator hidden">⚠️ Mode hors ligne</div>
+
     <div class="max-w-7xl mx-auto">
         <!-- Toast Notification -->
         <div id="toast" class="toast"></div>
@@ -328,23 +368,97 @@
         </div>
     </div>
 
-    <!-- Import Modal -->
+    <!-- Import Modal - NOUVELLE VERSION -->
     <div id="importModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 600px;">
             <h3 class="text-lg font-bold mb-4">Importer une pesée</h3>
-            <div class="space-y-3">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Coller les données JSON</label>
-                    <textarea id="importJsonData" class="w-full h-40 px-3 py-2 border border-gray-300 rounded-md font-mono text-sm" placeholder='{"name": "Nouvelle pesée", ...}'></textarea>
+            
+            <!-- Onglets -->
+            <div class="flex mb-2">
+                <button id="tabFile" class="tab-button active" onclick="switchTab('file')">
+                    📁 Fichier JSON
+                </button>
+                <button id="tabText" class="tab-button" onclick="switchTab('text')">
+                    📝 Coller JSON
+                </button>
+            </div>
+            
+            <!-- Contenu de l'onglet Fichier -->
+            <div id="tabFileContent" class="tab-content active">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Sélectionner un fichier JSON
+                    </label>
+                    
+                    <!-- Bouton pour choisir un fichier -->
+                    <div class="mb-3">
+                        <input type="file" id="jsonFileInput" accept=".json" class="hidden">
+                        <button type="button" onclick="document.getElementById('jsonFileInput').click()" 
+                                class="w-full px-4 py-3 bg-blue-100 border-2 border-dashed border-blue-300 rounded-lg text-blue-700 hover:bg-blue-200 transition-colors flex flex-col items-center justify-center">
+                            <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                            <span class="font-medium">Choisir un fichier JSON</span>
+                            <span class="text-sm text-blue-600 mt-1">Cliquez ou glissez-déposez un fichier</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Zone de glisser-déposer -->
+                    <div id="dropZone" >
+                        
+                    </div>
+                    
+                    <!-- Informations sur le fichier sélectionné -->
+                    <div id="fileInfo" class="hidden p-3 bg-green-50 border border-green-200 rounded-lg mt-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <div>
+                                    <span id="fileName" class="font-medium text-gray-700"></span>
+                                    <span id="fileSize" class="text-sm text-gray-500 ml-2"></span>
+                                </div>
+                            </div>
+                            <button type="button" onclick="clearFileSelection()" class="text-red-500 hover:text-red-700">
+                                ✕
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div class="flex gap-2 pt-2">
-                    <button onclick="hideImportModal()" class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
-                        Annuler
-                    </button>
-                    <button onclick="importPeseeFromJson()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                        Importer
-                    </button>
+                
+                <div class="text-xs text-gray-500 mb-4">
+                    <p>Le fichier doit être au format JSON avec les données de pesée.</p>
                 </div>
+            </div>
+            
+            <!-- Contenu de l'onglet Texte -->
+            <div id="tabTextContent" class="tab-content">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Coller les données JSON
+                    </label>
+                    <textarea id="importJsonData" 
+                              class="w-full h-48 px-3 py-2 border border-gray-300 rounded-md font-mono text-sm" 
+                              placeholder='{"name": "Nouvelle pesée", "age": "79", "date": "07/09/2022", ...}'></textarea>
+                </div>
+                
+                <div class="text-xs text-gray-500">
+                    <p>Collez ici le contenu JSON d'une pesée exportée précédemment.</p>
+                </div>
+            </div>
+            
+            <!-- Boutons d'action -->
+            <div class="flex gap-2 pt-4 border-t border-gray-200">
+                <button onclick="hideImportModal()" 
+                        class="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors">
+                    Annuler
+                </button>
+                <button onclick="importPeseeFromJson()" 
+                        class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    Importer
+                </button>
             </div>
         </div>
     </div>
@@ -374,6 +488,71 @@
         let currentPeseeId = null;
         let sortOrder = 'asc';
         let currentSort = 'name';
+        let weights = [];
+
+        // ========== SERVER API FUNCTIONS ==========
+        async function loadPeseesFromServer() {
+            try {
+                console.log('Loading pesees from server...');
+                const response = await fetch('/api/pesees');
+                if (!response.ok) {
+                    throw new Error(`Server responded with ${response.status}`);
+                }
+                const data = await response.json();
+                console.log('Loaded pesees from server:', Object.keys(data).length);
+                return data;
+            } catch (error) {
+                console.error('Error loading from server, using localStorage:', error);
+                // Fallback to localStorage
+                const savedPesees = localStorage.getItem('pesees');
+                return savedPesees ? JSON.parse(savedPesees) : {};
+            }
+        }
+
+        async function savePeseesToServer(data) {
+            try {
+                console.log('Saving pesees to server...');
+                const response = await fetch('/api/pesees', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with ${response.status}`);
+                }
+                
+                const result = await response.json();
+                console.log('Saved to server successfully');
+                return { success: true, result };
+            } catch (error) {
+                console.error('Error saving to server, using localStorage:', error);
+                // Fallback to localStorage
+                localStorage.setItem('pesees', JSON.stringify(data));
+                return { success: false, error: error.message };
+            }
+        }
+
+        // Test server connection
+        async function testServerConnection() {
+            try {
+                const response = await fetch('/api/health');
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function updateOfflineIndicator(offline) {
+            const indicator = document.getElementById('offlineIndicator');
+            if (offline) {
+                indicator.classList.remove('hidden');
+            } else {
+                indicator.classList.add('hidden');
+            }
+        }
 
         // ========== PASSWORD FUNCTIONS ==========
         function showPasswordOverlay() {
@@ -497,10 +676,13 @@
         function showImportModal() {
             document.getElementById('importModal').style.display = 'flex';
             hidePeseeListModal();
+            // Reset file selection when showing modal
+            clearFileSelection();
         }
 
         function hideImportModal() {
             document.getElementById('importModal').style.display = 'none';
+            clearFileSelection();
         }
 
         // Toast notification function
@@ -524,26 +706,155 @@
             }, 3000);
         }
 
+        // ========== IMPORT TAB FUNCTIONS ==========
+        function switchTab(tabName) {
+            // Update buttons
+            document.getElementById('tabFile').classList.toggle('active', tabName === 'file');
+            document.getElementById('tabText').classList.toggle('active', tabName === 'text');
+            
+            // Update content
+            document.getElementById('tabFileContent').classList.toggle('active', tabName === 'file');
+            document.getElementById('tabTextContent').classList.toggle('active', tabName === 'text');
+        }
+
+        function setupFileImport() {
+            const fileInput = document.getElementById('jsonFileInput');
+            const dropZone = document.getElementById('dropZone');
+            
+            // Show drop zone
+            dropZone.classList.remove('hidden');
+            
+            // Handle file selection via input
+            fileInput.addEventListener('change', function(e) {
+                if (this.files && this.files[0]) {
+                    handleFileSelection(this.files[0]);
+                }
+            });
+            
+            // Setup drag and drop
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropZone.classList.add('border-blue-400', 'bg-blue-50');
+            }
+            
+            function unhighlight() {
+                dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+            }
+            
+            dropZone.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                        handleFileSelection(file);
+                    } else {
+                        showToast('Veuillez sélectionner un fichier JSON valide', 'error');
+                    }
+                }
+            }
+            
+            // Click on drop zone also triggers file selection
+            dropZone.addEventListener('click', () => {
+                fileInput.click();
+            });
+        }
+
+        function handleFileSelection(file) {
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const fileSize = document.getElementById('fileSize');
+            
+            // Update file info display
+            fileName.textContent = file.name;
+            fileSize.textContent = `(${formatFileSize(file.size)})`;
+            fileInfo.classList.remove('hidden');
+            
+            // Read and validate file
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    // Validate JSON
+                    JSON.parse(content);
+                    // Populate textarea with file content
+                    document.getElementById('importJsonData').value = content;
+                    showToast('Fichier chargé avec succès', 'success');
+                } catch (error) {
+                    showToast('Erreur: Le fichier n\'est pas un JSON valide', 'error');
+                    clearFileSelection();
+                }
+            };
+            reader.onerror = function() {
+                showToast('Erreur lors de la lecture du fichier', 'error');
+                clearFileSelection();
+            };
+            reader.readAsText(file);
+        }
+
+        function clearFileSelection() {
+            document.getElementById('jsonFileInput').value = '';
+            document.getElementById('fileInfo').classList.add('hidden');
+            document.getElementById('importJsonData').value = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
         // ========== PESEE MANAGEMENT FUNCTIONS ==========
         
-        function initializePesees() {
-            // Try to load from localStorage first
-            const savedPesees = localStorage.getItem('pesees');
-            if (savedPesees) {
-                try {
-                    pesees = JSON.parse(savedPesees);
-                    const ids = Object.keys(pesees);
-                    if (ids.length > 0) {
-                        currentPeseeId = ids[0];
-                    } else {
-                        createDefaultPesee();
-                    }
-                } catch (e) {
-                    console.error('Error loading saved pesees:', e);
-                    createDefaultPesee();
-                }
+        async function initializePesees() {
+            console.log('Initializing pesees...');
+            
+            // Test server connection
+            const serverAvailable = await testServerConnection();
+            updateOfflineIndicator(!serverAvailable);
+            
+            if (serverAvailable) {
+                console.log('Server is available');
             } else {
-                createDefaultPesee();
+                console.log('Server is not available, using localStorage');
+                showToast('Mode hors ligne: données sauvegardées localement', 'warning');
+            }
+            
+            // Setup file import functionality
+            setupFileImport();
+            
+            // Load data
+            pesees = await loadPeseesFromServer();
+            
+            // If no data exists, create default
+            const ids = Object.keys(pesees);
+            if (ids.length === 0) {
+                console.log('No pesees found, creating default...');
+                await createDefaultPesee();
+            } else {
+                currentPeseeId = ids[0];
             }
             
             updatePeseeStatistics();
@@ -556,7 +867,7 @@
             updateLockState();
         }
 
-        function createDefaultPesee() {
+        async function createDefaultPesee() {
             const id = 'pesee_' + Date.now();
             pesees[id] = {
                 id: id,
@@ -573,10 +884,10 @@
                 pesees[id].weights.push(0);
             }
             currentPeseeId = id;
-            savePesees();
+            await savePesees();
         }
 
-        function createNewPeseeFromModal() {
+        async function createNewPeseeFromModal() {
             const name = document.getElementById('newPeseeName').value || `Pesée ${Object.keys(pesees).length + 1}`;
             const age = document.getElementById('newPeseeAge').value || '';
             const date = document.getElementById('newPeseeDate').value || new Date().toLocaleDateString('fr-FR');
@@ -596,7 +907,7 @@
                 modifiedAt: new Date().toISOString()
             };
             currentPeseeId = id;
-            savePesees();
+            await savePesees();
             updatePeseeStatistics();
             renderPeseeList();
             loadPesee(id);
@@ -604,7 +915,7 @@
             showToast(`Pesée "${name}" créée avec succès!`);
         }
 
-        function duplicateCurrentPesee() {
+        async function duplicateCurrentPesee() {
             if (!currentPeseeId) return;
             
             // Check if unlocked before allowing duplication
@@ -623,14 +934,14 @@
                 modifiedAt: new Date().toISOString()
             };
             currentPeseeId = id;
-            savePesees();
+            await savePesees();
             updatePeseeStatistics();
             renderPeseeList();
             loadPesee(id);
             showToast(`Pesée dupliquée avec succès!`);
         }
 
-        function confirmDeletePesee() {
+        async function confirmDeletePesee() {
             if (!currentPeseeId) return;
             
             if (Object.keys(pesees).length === 1) {
@@ -643,7 +954,7 @@
             delete pesees[currentPeseeId];
             const ids = Object.keys(pesees);
             currentPeseeId = ids[0];
-            savePesees();
+            await savePesees();
             updatePeseeStatistics();
             renderPeseeList();
             loadPesee(currentPeseeId);
@@ -651,39 +962,123 @@
             showToast(`Pesée "${deletedName}" supprimée avec succès!`);
         }
 
-        function importPeseeFromJson() {
+        // NOUVELLE FONCTION: Supprimer une pesée depuis la liste
+        async function deletePeseeFromList(id, event) {
+            if (event) event.stopPropagation();
+            
+            // Check if unlocked before allowing deletion
+            if (!isUnlocked) {
+                showToast('Veuillez déverrouiller la pesée pour la supprimer', 'error');
+                return;
+            }
+            
+            const pesee = pesees[id];
+            if (!pesee) return;
+            
+            // Check if it's the last pesee
+            if (Object.keys(pesees).length === 1) {
+                alert('Vous ne pouvez pas supprimer la dernière pesée!');
+                return;
+            }
+            
+            // Confirmation dialog
+            if (!confirm(`Êtes-vous sûr de vouloir supprimer la pesée "${pesee.name}" ?`)) {
+                return;
+            }
+            
+            // Delete the pesee
+            delete pesees[id];
+            
+            // If we deleted the current pesee, load another one
+            if (currentPeseeId === id) {
+                const remainingIds = Object.keys(pesees);
+                currentPeseeId = remainingIds.length > 0 ? remainingIds[0] : null;
+                if (currentPeseeId) {
+                    loadPesee(currentPeseeId);
+                }
+            }
+            
+            // Save changes and update UI
+            await savePesees();
+            updatePeseeStatistics();
+            renderPeseeList();
+            
+            showToast(`Pesée "${pesee.name}" supprimée avec succès!`);
+        }
+
+        async function importPeseeFromJson() {
             try {
-                const jsonData = document.getElementById('importJsonData').value;
-                if (!jsonData) {
-                    alert('Veuillez coller des données JSON valides');
+                let jsonData = document.getElementById('importJsonData').value;
+                const fileInput = document.getElementById('jsonFileInput');
+                
+                // If textarea is empty, check if there's a file selected
+                if (!jsonData.trim() && fileInput.files.length > 0) {
+                    const file = fileInput.files[0];
+                    jsonData = await readFileAsText(file);
+                }
+                
+                if (!jsonData || !jsonData.trim()) {
+                    alert('Veuillez télécharger un fichier JSON ou coller des données JSON');
                     return;
                 }
                 
                 const data = JSON.parse(jsonData);
                 const id = 'pesee_' + Date.now();
                 
+                // Process weights
+                let finalWeights = [];
+                
+                if (data.weights && Array.isArray(data.weights)) {
+                    finalWeights = data.weights;
+                } else if (data.groupes && Array.isArray(data.groupes)) {
+                    const sortedGroups = data.groupes.sort((a, b) => a.numero - b.numero);
+                    sortedGroups.forEach(group => {
+                        if (group.poids && Array.isArray(group.poids)) {
+                            finalWeights = finalWeights.concat(group.poids);
+                        }
+                    });
+                }
+                
+                // Ensure we have exactly 108 weights
+                if (finalWeights.length === 0) finalWeights = Array(108).fill(0);
+                while (finalWeights.length < 108) finalWeights.push(0);
+                if (finalWeights.length > 108) finalWeights = finalWeights.slice(0, 108);
+
+                const info = data.info || {};
+
                 pesees[id] = {
                     id: id,
                     name: data.name || `Pesée importée ${Object.keys(pesees).length + 1}`,
-                    age: data.age || '',
-                    date: data.date || new Date().toLocaleDateString('fr-FR'),
-                    building: data.building || '',
-                    targetWeight: data.targetWeight || 2045,
-                    weights: data.weights || Array(108).fill(0),
+                    age: data.age || info.age || '',
+                    date: data.date || info.date || new Date().toLocaleDateString('fr-FR'),
+                    building: data.building || info.batiment || '',
+                    targetWeight: parseFloat(data.targetWeight || info.pn || 2045),
+                    weights: finalWeights,
                     createdAt: new Date().toISOString(),
                     modifiedAt: new Date().toISOString()
                 };
                 
                 currentPeseeId = id;
-                savePesees();
+                await savePesees();
                 updatePeseeStatistics();
                 renderPeseeList();
                 loadPesee(id);
                 hideImportModal();
                 showToast('Pesée importée avec succès!');
             } catch (error) {
+                console.error('Import error:', error);
                 showToast('Erreur lors de l\'importation: ' + error.message, 'error');
             }
+        }
+
+        // Helper function to read file as text
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
+                reader.readAsText(file);
+            });
         }
 
         function loadPesee(id) {
@@ -715,8 +1110,8 @@
             updateLockState();
         }
 
-        function saveCurrentPesee() {
-            if (!currentPeseeId) return;
+        async function saveCurrentPesee() {
+            if (!currentPeseeId) return false;
             
             // Check if unlocked before allowing save
             if (!isUnlocked) {
@@ -733,20 +1128,20 @@
                 weights: [...weights],
                 modifiedAt: new Date().toISOString()
             };
-            savePesees();
+            const success = await savePesees();
             renderPeseeList();
-            return true;
+            return success;
         }
 
-        function saveCurrentPeseeWithFeedback() {
-            if (saveCurrentPesee()) {
+        async function saveCurrentPeseeWithFeedback() {
+            if (await saveCurrentPesee()) {
                 showToast('Pesée sauvegardée avec succès!');
             } else {
                 showToast('Erreur lors de la sauvegarde', 'error');
             }
         }
 
-        function renamePesee(id, event) {
+        async function renamePesee(id, event) {
             if (event) event.stopPropagation();
             
             // Check if unlocked before allowing rename
@@ -759,7 +1154,7 @@
             if (newName && newName.trim()) {
                 pesees[id].name = newName.trim();
                 pesees[id].modifiedAt = new Date().toISOString();
-                savePesees();
+                await savePesees();
                 renderPeseeList();
                 if (id === currentPeseeId) {
                     document.getElementById('currentPeseeTitle').textContent = newName.trim();
@@ -768,8 +1163,12 @@
             }
         }
 
-        function savePesees() {
-            localStorage.setItem('pesees', JSON.stringify(pesees));
+        async function savePesees() {
+            const result = await savePeseesToServer(pesees);
+            if (!result.success) {
+                showToast('Erreur serveur, données sauvegardées localement', 'error');
+            }
+            return result.success;
         }
 
         function updatePeseeStatistics() {
@@ -863,9 +1262,14 @@
                     ${dataIndicator}
                     <span class="flex-1 font-medium truncate" onclick="loadPesee('${pesee.id}')">${pesee.name}</span>
                     <span class="text-xs text-gray-500">${pesee.date}</span>
-                    <button onclick="renamePesee('${pesee.id}', event)" class="text-gray-600 hover:text-blue-600 text-sm" title="Renommer">
-                        ✏️
-                    </button>
+                    <div class="flex gap-1">
+                        <button onclick="renamePesee('${pesee.id}', event)" class="text-gray-600 hover:text-blue-600 text-sm p-1 rounded hover:bg-blue-100" title="Renommer">
+                            ✏️
+                        </button>
+                        <button onclick="deletePeseeFromList('${pesee.id}', event)" class="text-gray-600 hover:text-red-600 text-sm p-1 rounded hover:bg-red-100" title="Supprimer">
+                            🗑️
+                        </button>
+                    </div>
                 `;
                 
                 container.appendChild(div);
@@ -880,8 +1284,6 @@
         }
 
         // ========== WEIGHT MANAGEMENT FUNCTIONS ==========
-        let weights = [];
-
         function calculateAverage(arr) {
             const filtered = arr.filter(w => w > 0);
             if (filtered.length === 0) return 0;
@@ -996,7 +1398,7 @@
                     input.placeholder = '0';
                     input.disabled = !isUnlocked;
                     input.className = `w-full p-2 text-center text-sm font-mono rounded border ${getColorClass(weights[absoluteIndex], stats)}`;
-                    input.addEventListener('input', (e) => updateWeight(absoluteIndex, e.target.value));
+                    input.addEventListener('change', (e) => updateWeight(absoluteIndex, e.target.value));
                     row1.appendChild(input);
                 }
                 
@@ -1431,8 +1833,8 @@
         }
 
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initializePesees();
+        document.addEventListener('DOMContentLoaded', async function() {
+            await initializePesees();
         });
     </script>
 </body>
