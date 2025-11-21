@@ -8,6 +8,60 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <style>
+@media print {
+            /* 1. FORCER L'IMPRESSION DES COULEURS ET BORDURES */
+            body {
+                -webkit-print-color-adjust: exact !important; /* Chrome, Safari, Edge */
+                print-color-adjust: exact !important;         /* Firefox */
+                background: white !important;
+            }
+
+            /* 2. CACHER LES BOUTONS */
+            .no-print { 
+                display: none !important; 
+            }
+
+            /* 3. RÉTABLIR LES BORDURES DES INPUTS */
+            /* On s'assure que les cases gardent leur aspect "tableau" */
+            input {
+                border: 1px solid #ccc !important; /* Bordure grise fine */
+                box-shadow: none !important;
+            }
+            
+            /* Supprimer les ombres globales pour un rendu plus net */
+            #mainContent {
+                box-shadow: none !important;
+                padding: 0 !important;
+                width: 100% !important;
+                border: none !important;
+            }
+
+            /* 4. CENTRAGE DU TITRE (Comme demandé précédemment) */
+            .flex.items-center.gap-3.mb-6 {
+                display: block !important;
+                text-align: center !important;
+                margin-bottom: 20px !important;
+            }
+
+            /* Cacher l'icône du poulet */
+            .flex.items-center.gap-3.mb-6 > svg {
+                display: none !important;
+            }
+
+            /* Centrer le texte du titre */
+            #currentPeseeTitle {
+                text-align: center !important;
+                width: 100% !important;
+                font-size: 24pt !important;
+                color: black !important;
+            }
+
+            /* Centrer les sous-infos (Date, Age...) */
+            #currentPeseeTitle + div {
+                justify-content: center !important;
+                margin-top: 10px !important;
+            }
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
@@ -210,7 +264,7 @@
 
             <div class="bg-gray-50 rounded-lg p-4 overflow-x-auto">
                 <h2 class="text-lg font-semibold text-gray-800 mb-3">
-                    Pesées (108 poulets en 6 groupes de 18)
+                    
                 </h2>
                 <div id="groupsContainer" class="flex flex-col gap-6"></div>
             </div>
