@@ -1,4 +1,3 @@
-
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -14,6 +13,7 @@ if (!fs.existsSync(dataDir)) {
 const dataFile = path.join(dataDir, 'pesees.json');
 
 app.use(express.json({ limit: '10mb' }));
+// Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Enable CORS
@@ -72,6 +72,11 @@ app.post('/api/pesees', (req, res) => {
     }
 });
 
+// Serve the main page from public directory
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -79,5 +84,6 @@ app.get('/api/health', (req, res) => {
 
 app.listen(port, () => {
     console.log(`Server running on http://localhost:${port}`);
+    console.log(`Serving static files from: ${path.join(__dirname, 'public')}`);
     console.log(`Data file: ${dataFile}`);
 });
