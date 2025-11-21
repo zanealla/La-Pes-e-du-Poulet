@@ -7,7 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-    <style>
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+   <style>
 @media print {
             /* 1. FORCER L'IMPRESSION DES COULEURS ET BORDURES */
             body {
@@ -63,8 +66,9 @@
             }
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Anton, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
+		
         @media print {
             .no-print { display: none; }
         }
@@ -1413,7 +1417,7 @@
                 input.value = weights[absoluteIndex] === 0 ? '' : weights[absoluteIndex];
                 input.placeholder = '0';
                 input.disabled = !isUnlocked;
-                input.className = `w-full p-2 text-center text-sm font-mono rounded border-2 ${getColorClass(weights[absoluteIndex], stats)}`;
+               input.className = `w-full p-2 text-center text-sm font-anton font-bold rounded border-2 ${getColorClass(weights[absoluteIndex], stats)}`;
                 input.addEventListener('change', (e) => updateWeight(absoluteIndex, e.target.value));
                 row1.appendChild(input);
             }
@@ -1428,7 +1432,7 @@
                 input.value = weights[absoluteIndex] === 0 ? '' : weights[absoluteIndex];
                 input.placeholder = '0';
                 input.disabled = !isUnlocked;
-                input.className = `w-full p-2 text-center text-sm font-mono rounded border-2 ${getColorClass(weights[absoluteIndex], stats)}`;
+                input.className = `w-full p-2 text-center text-sm font-anton font-bold rounded border-2 ${getColorClass(weights[absoluteIndex], stats)}`;
                 input.addEventListener('change', (e) => updateWeight(absoluteIndex, e.target.value));
                 row2.appendChild(input);
             }
