@@ -5,7 +5,7 @@ const app = express();
 const port = 7000;
 
 // Create data directory if it doesn't exist
-const dataDir = path.join(__dirname, 'data');
+const dataDir = process.env.RAILWAY_VOLUME_PATH || path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -86,4 +86,5 @@ app.listen(port, () => {
     console.log(`Server running on http://localhost:${port}`);
     console.log(`Serving static files from: ${path.join(__dirname, 'public')}`);
     console.log(`Data file: ${dataFile}`);
+	console.log('Using data directory:', dataDir);
 });
