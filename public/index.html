@@ -617,35 +617,82 @@
         document.getElementById('fileInfo').classList.add('hidden');
     }
 
+    // --- Fonction 1 : Gestion du clic sur le bouton Importer ---
     function importPeseeFromJson() {
         let jsonText = "";
+        let fileNameFromInput = null;
 
-        // Case 1: user pasted JSON
+        // Cas 1 : L'utilisateur a collé du JSON dans la zone de texte
         const textData = document.getElementById('importJsonData').value.trim();
         if (textData.length > 0) {
             jsonText = textData;
         }
 
-        // Case 2: user selected a file
+        // Cas 2 : L'utilisateur a sélectionné un fichier
         const fileInput = document.getElementById('jsonFileInput');
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
+            // On nettoie le nom du fichier (enlève .json) pour l'utiliser comme titre si besoin
+            fileNameFromInput = file.name.replace(/\.[^/.]+$/, ""); 
+            
             const reader = new FileReader();
-
             reader.onload = function (e) {
-                loadImportedJson(e.target.result);
+                // Appel de la fonction de chargement avec le contenu ET le nom du fichier
+                loadImportedJson(e.target.result, fileNameFromInput);
+            };
+            reader.readAsText(file);
+            return; // On arrête ici car le reader est asynchrone
+        }
+
+        // Si rien n'est fourni
+        if (jsonText === "") {
+            showToast("Aucune donnée JSON fournie", "error");
+            return;
+        }
+
+        // Si c'est du texte collé, on lance l'import direct
+        loadImportedJson(jsonText);
+    }
+
+    // --- Fonction 2 : Traitement des données et création de la pesée ---
+    function loadImportedJson(jsonText, fileNameFallback = null) {
+        try {
+            const data = JSON.parse(jsonText);
+            const peseeId = "pesee_" + Date.now();
+
+            // LOGIQUE DE NOMMAGE :
+            // 1. Si le JSON contient un "name" (nouveaux exports), on l'utilise.
+            // 2. Sinon, si on a un nom de fichier (fileNameFallback), on l'utilise.
+            // 3. Sinon, on met "Importée" par défaut.
+            const finalName = data.name || fileNameFallback || "Importée";
+
+            // CORRECTION DU PN :
+            // On cherche 'pn' (nouveau format), ou 'targetWeight' (ancien), ou 2045 par défaut
+            const targetPn = data.info.pn || data.info.targetWeight || 2045;
+
+            pesees[peseeId] = {
+                id: peseeId,
+                name: finalName,
+                age: data.info.age,
+                date: data.info.date,
+                building: data.info.batiment,
+                targetWeight: targetPn,
+                weights: data.groupes.flatMap(g => g.poids),
+                groupMultipliers: data.groupes.map(g => g.pouletsParCase),
+                createdAt: new Date().toISOString(),
+                modifiedAt: new Date().toISOString()
             };
 
-            reader.readAsText(file);
-            return;
-        }
+            savePesees();
+            loadPesee(peseeId);
+            hideImportModal();
+            
+            showToast(`Pesée "${finalName}" importée avec succès !`);
 
-        if (jsonText === "") {
-            showToast("Aucun JSON fourni", "error");
-            return;
+        } catch (err) {
+            console.error("Erreur lors de l'importation :", err);
+            showToast("Format JSON invalide", "error");
         }
-
-        loadImportedJson(jsonText);
     }
 
     function loadImportedJson(jsonText) {
@@ -655,17 +702,18 @@
             const peseeId = "pesee_" + Date.now();
 
             pesees[peseeId] = {
-                id: peseeId,
-                name: data.name || "Importée",
-                age: data.info.age,
-                date: data.info.date,
-                building: data.info.batiment,
-                targetWeight: data.info.targetWeight,
-                weights: data.groupes.flatMap(g => g.poids),
-                groupMultipliers: data.groupes.map(g => g.pouletsParCase),
-                createdAt: new Date().toISOString(),
-                modifiedAt: new Date().toISOString()
-            };
+    id: peseeId,
+    name: data.name || "Importée",
+    age: data.info.age,
+    date: data.info.date,
+    building: data.info.batiment,
+    // CORRECTION : On lit 'pn' (format export) OU 'targetWeight' (ancien format) OU 2045 par défaut
+    targetWeight: data.info.pn || data.info.targetWeight || 2045,
+    weights: data.groupes.flatMap(g => g.poids),
+    groupMultipliers: data.groupes.map(g => g.pouletsParCase),
+    createdAt: new Date().toISOString(),
+    modifiedAt: new Date().toISOString()
+};
 
             savePesees();
             loadPesee(peseeId);
@@ -1616,6 +1664,7 @@ function exportPDF() {
     function exportJSON() {
         const stats = calculateStats();
         const data = {
+		name: pesees[currentPeseeId].name,
             info: {
                 age: document.getElementById('age').value,
                 date: document.getElementById('date').value,
