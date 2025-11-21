@@ -227,6 +227,9 @@
                     <button onclick="showDeleteModal()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium">
                         Supprimer
                     </button>
+					    <button onclick="exportAllPesees()" class="px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium">
+                        💾 Sauvegarde Globale
+                    </button>
                     <button onclick="exportPDF()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium">
                         PDF
                     </button>
@@ -673,40 +676,56 @@
 
     // --- Fonction 1 : Gestion du clic sur le bouton Importer ---
     function importPeseeFromJson() {
-        let jsonText = "";
-        let fileNameFromInput = null;
+    const fileInput = document.getElementById('jsonFileInput');
+    const textData = document.getElementById('importJsonData').value.trim();
 
-        // Cas 1 : L'utilisateur a collé du JSON dans la zone de texte
-        const textData = document.getElementById('importJsonData').value.trim();
-        if (textData.length > 0) {
-            jsonText = textData;
-        }
-
-        // Cas 2 : L'utilisateur a sélectionné un fichier
-        const fileInput = document.getElementById('jsonFileInput');
-        if (fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            // On nettoie le nom du fichier (enlève .json) pour l'utiliser comme titre si besoin
-            fileNameFromInput = file.name.replace(/\.[^/.]+$/, ""); 
+    // Cas 1 : Fichier sélectionné
+    if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        const fileNameFallback = file.name.replace(/\.[^/.]+$/, ""); 
+        
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const content = e.target.result;
             
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                // Appel de la fonction de chargement avec le contenu ET le nom du fichier
-                loadImportedJson(e.target.result, fileNameFromInput);
-            };
-            reader.readAsText(file);
-            return; // On arrête ici car le reader est asynchrone
-        }
-
-        // Si rien n'est fourni
-        if (jsonText === "") {
-            showToast("Aucune donnée JSON fournie", "error");
-            return;
-        }
-
-        // Si c'est du texte collé, on lance l'import direct
-        loadImportedJson(jsonText);
+            // TENTE DE PARSER POUR VOIR SI C'EST UN FICHIER GLOBAL OU SIMPLE
+            try {
+                const data = JSON.parse(content);
+                if (data.pesees) {
+                    // C'est une sauvegarde complète!
+                    importAllPesees(content);
+                } else {
+                    // C'est une seule pesée (l'ancien format)
+                    loadImportedJson(content, fileNameFallback);
+                }
+            } catch (err) {
+                // Erreur de parsing, c'est un JSON invalide
+                showToast("Fichier JSON invalide.", "error");
+            }
+        };
+        reader.readAsText(file);
+        return;
     }
+
+    // Cas 2 : Texte collé
+    if (textData.length > 0) {
+        try {
+            const data = JSON.parse(textData);
+            if (data.pesees) {
+                 // C'est une sauvegarde complète!
+                importAllPesees(textData);
+            } else {
+                 // C'est une seule pesée
+                loadImportedJson(textData, "Pesée collée");
+            }
+        } catch (err) {
+            showToast("JSON invalide ou format inconnu.", "error");
+        }
+        return;
+    }
+
+    showToast("Veuillez sélectionner un fichier ou coller du JSON", "error");
+}
 
     // --- Fonction 2 : Traitement des données et création de la pesée ---
     function loadImportedJson(jsonText, fileNameFallback = null) {
@@ -1769,6 +1788,72 @@ function exportPDF() {
 
     // Include all your existing export functions (exportPDF, exportCSV, exportJSON) here
     // They remain exactly the same as in your original code
+	function exportAllPesees() {
+    // L'objet 'pesees' est sauvegardé tel quel.
+    const allData = {
+        version: "1.0", // Ajout d'une version pour la compatibilité future
+        timestamp: new Date().toISOString(),
+        pesees: pesees // Exporte l'objet global 'pesees'
+    };
+
+    const json = JSON.stringify(allData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sauvegarde-complete-pesees-${new Date().toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-')}.json`;
+    a.click();
+    showToast('Sauvegarde complète de toutes les pesées réussie!');
+}
+function importAllPesees(jsonText) {
+    try {
+        const importedData = JSON.parse(jsonText);
+
+        if (!importedData.pesees) {
+            showToast("Fichier de sauvegarde invalide : 'pesees' manquant.", "error");
+            return;
+        }
+
+        let importedCount = 0;
+        const importedPesees = importedData.pesees;
+        let lastPeseeId = currentPeseeId;
+
+        // Parcourt toutes les pesées importées
+        for (const id in importedPesees) {
+            if (importedPesees.hasOwnProperty(id)) {
+                const pesee = importedPesees[id];
+                
+                // Vérifie si l'ID existe déjà pour éviter d'écraser des données
+                // Si l'ID existe, on le remplace par un nouvel ID basé sur le temps
+                let newId = id;
+                if (pesees[id]) {
+                    newId = "pesee_" + Date.now() + "_" + importedCount;
+                    pesee.id = newId; 
+                }
+                
+                // Ajoute ou remplace la pesée
+                pesees[newId] = pesee;
+                lastPeseeId = newId; // Mémorise la dernière importée
+                importedCount++;
+            }
+        }
+
+        savePesees();
+        
+        // Charge la dernière pesée importée
+        if (lastPeseeId) {
+             loadPesee(lastPeseeId);
+        }
+       
+        hideImportModal();
+        showToast(`${importedCount} pesée(s) ajoutée(s) avec succès!`);
+
+    } catch (err) {
+        console.error("Erreur lors de l'importation de toutes les pesées:", err);
+        showToast("Fichier de sauvegarde complet invalide", "error");
+    }
+}
+
 </script></script>
 </body>
 </html>
