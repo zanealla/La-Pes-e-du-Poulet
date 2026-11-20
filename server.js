@@ -1,15 +1,26 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { eq } = require('drizzle-orm');
+const { drizzle } = require('drizzle-orm/node-postgres');
+const { jsonb, pgTable, text, timestamp } = require('drizzle-orm/pg-core');
+const { Pool } = require('pg');
 const app = express();
-const port = 7000;
+const port = process.env.PORT || 7000;
 
-// Create data directory if it doesn't exist
-const dataDir = process.env.RAILWAY_VOLUME_PATH || path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required to persist pesée data');
 }
 
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
+const peseesStore = pgTable('pesees_store', {
+    id: text('id').primaryKey(),
+    data: jsonb('data').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
+const dataDir = process.env.RAILWAY_VOLUME_PATH || path.join(__dirname, 'data');
 const dataFile = path.join(dataDir, 'pesees.json');
 
 app.use(express.json({ limit: '10mb' }));
@@ -24,48 +35,63 @@ app.use((req, res, next) => {
     next();
 });
 
-function readData() {
+function readLegacyData() {
     try {
-        if (!fs.existsSync(dataFile)) {
-            fs.writeFileSync(dataFile, "{}");
-            return {};
-        }
-        const data = fs.readFileSync(dataFile, "utf8");
-        return data ? JSON.parse(data) : {};
+        if (!fs.existsSync(dataFile)) return {};
+        const contents = fs.readFileSync(dataFile, 'utf8');
+        const data = contents ? JSON.parse(contents) : {};
+        return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
     } catch (error) {
-        console.error('Error reading data file:', error);
+        console.error('Error reading legacy pesée data:', error);
         return {};
     }
 }
 
-function writeData(obj) {
+app.get('/api/pesees', async (req, res) => {
     try {
-        fs.writeFileSync(dataFile, JSON.stringify(obj, null, 2));
-        return true;
-    } catch (error) {
-        console.error('Error writing data file:', error);
-        return false;
-    }
-}
+        let [saved] = await db
+            .select({ data: peseesStore.data })
+            .from(peseesStore)
+            .where(eq(peseesStore.id, 'global'))
+            .limit(1);
 
-app.get('/api/pesees', (req, res) => {
-    try {
-        const data = readData();
-        res.json(data);
+        if (!saved) {
+            const legacyData = readLegacyData();
+            if (Object.keys(legacyData).length > 0) {
+                await db
+                    .insert(peseesStore)
+                    .values({ id: 'global', data: legacyData, updatedAt: new Date() })
+                    .onConflictDoNothing();
+                [saved] = await db
+                    .select({ data: peseesStore.data })
+                    .from(peseesStore)
+                    .where(eq(peseesStore.id, 'global'))
+                    .limit(1);
+            }
+        }
+
+        res.json(saved?.data || {});
     } catch (error) {
         console.error('Error in GET /api/pesees:', error);
         res.status(500).json({ error: 'Failed to read data' });
     }
 });
 
-app.post('/api/pesees', (req, res) => {
+app.post('/api/pesees', async (req, res) => {
+    const data = req.body;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return res.status(400).json({ error: 'Expected a pesée data object' });
+    }
+
     try {
-        const success = writeData(req.body);
-        if (success) {
-            res.json({ status: 'saved', timestamp: new Date().toISOString() });
-        } else {
-            res.status(500).json({ error: 'Failed to save data' });
-        }
+        await db
+            .insert(peseesStore)
+            .values({ id: 'global', data, updatedAt: new Date() })
+            .onConflictDoUpdate({
+                target: peseesStore.id,
+                set: { data, updatedAt: new Date() },
+            });
+        res.json({ status: 'saved', timestamp: new Date().toISOString() });
     } catch (error) {
         console.error('Error in POST /api/pesees:', error);
         res.status(500).json({ error: 'Failed to save data' });
