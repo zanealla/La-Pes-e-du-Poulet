@@ -568,16 +568,16 @@
             if (response.ok) {
                 const result = await response.json();
                 console.log('Saved successfully:', result);
-                return { success: true };
+                return true;
             } else {
                 console.error('Failed to save pesees:', response.status);
                 showToast('Erreur de sauvegarde sur le serveur', 'error');
-                return { success: false };
+                return false;
             }
         } catch (error) {
             console.error('Error saving pesees:', error);
             showToast('Erreur de connexion au serveur', 'error');
-            return { success: false };
+            return false;
         }
     }
 
@@ -731,74 +731,42 @@
     showToast("Veuillez sélectionner un fichier ou coller du JSON", "error");
 }
 
-    // --- Fonction 2 : Traitement des données et création de la pesée ---
-    function loadImportedJson(jsonText, fileNameFallback = null) {
+    // --- Import a single pesée and wait until the server confirms it is saved ---
+    async function loadImportedJson(jsonText, fileNameFallback = null) {
         try {
             const data = JSON.parse(jsonText);
-            const peseeId = "pesee_" + Date.now();
+            if (!data.info || !Array.isArray(data.groupes)) {
+                throw new Error('Invalid pesée format');
+            }
 
-            // LOGIQUE DE NOMMAGE :
-            // 1. Si le JSON contient un "name" (nouveaux exports), on l'utilise.
-            // 2. Sinon, si on a un nom de fichier (fileNameFallback), on l'utilise.
-            // 3. Sinon, on met "Importée" par défaut.
-            const finalName = data.name || fileNameFallback || "Importée";
-
-            // CORRECTION DU PN :
-            // On cherche 'pn' (nouveau format), ou 'targetWeight' (ancien), ou 2045 par défaut
-            const targetPn = data.info.pn || data.info.targetWeight || 2045;
-
-            pesees[peseeId] = {
+            const peseeId = `pesee_${Date.now()}`;
+            const previousPesees = pesees;
+            const finalName = data.name || fileNameFallback || 'Importée';
+            const importedPesee = {
                 id: peseeId,
                 name: finalName,
                 age: data.info.age,
                 date: data.info.date,
                 building: data.info.batiment,
-                targetWeight: targetPn,
-                weights: data.groupes.flatMap(g => g.poids),
-                groupMultipliers: data.groupes.map(g => g.pouletsParCase),
+                targetWeight: data.info.pn || data.info.targetWeight || 2045,
+                weights: data.groupes.flatMap(group => group.poids),
+                groupMultipliers: data.groupes.map(group => group.pouletsParCase),
                 createdAt: new Date().toISOString(),
                 modifiedAt: new Date().toISOString()
             };
 
-            savePesees();
+            pesees = { ...previousPesees, [peseeId]: importedPesee };
+            if (!(await savePesees())) {
+                pesees = previousPesees;
+                return;
+            }
+
             loadPesee(peseeId);
             hideImportModal();
-            
-            showToast(`Pesée "${finalName}" importée avec succès !`);
-
+            showToast(`Pesée "${finalName}" importée et sauvegardée !`);
         } catch (err) {
             console.error("Erreur lors de l'importation :", err);
-            showToast("Format JSON invalide", "error");
-        }
-    }
-
-    function loadImportedJson(jsonText) {
-        try {
-            const data = JSON.parse(jsonText);
-
-            const peseeId = "pesee_" + Date.now();
-
-            pesees[peseeId] = {
-    id: peseeId,
-    name: data.name || "Importée",
-    age: data.info.age,
-    date: data.info.date,
-    building: data.info.batiment,
-    // CORRECTION : On lit 'pn' (format export) OU 'targetWeight' (ancien format) OU 2045 par défaut
-    targetWeight: data.info.pn || data.info.targetWeight || 2045,
-    weights: data.groupes.flatMap(g => g.poids),
-    groupMultipliers: data.groupes.map(g => g.pouletsParCase),
-    createdAt: new Date().toISOString(),
-    modifiedAt: new Date().toISOString()
-};
-
-            savePesees();
-            loadPesee(peseeId);
-            hideImportModal();
-            showToast("Import JSON réussi !");
-        } catch (err) {
-            console.error(err);
-            showToast("JSON invalide", "error");
+            showToast('Format JSON invalide', 'error');
         }
     }
 
@@ -1809,52 +1777,39 @@ function exportPDF() {
     a.click();
     showToast('Sauvegarde complète de toutes les pesées réussie!');
 }
-function importAllPesees(jsonText) {
+async function importAllPesees(jsonText) {
     try {
         const importedData = JSON.parse(jsonText);
-
-        if (!importedData.pesees) {
-            showToast("Fichier de sauvegarde invalide : 'pesees' manquant.", "error");
+        if (!importedData.pesees || typeof importedData.pesees !== 'object' || Array.isArray(importedData.pesees)) {
+            showToast("Fichier de sauvegarde invalide : 'pesees' manquant.", 'error');
             return;
         }
 
-        let importedCount = 0;
+        const previousPesees = pesees;
+        const nextPesees = { ...previousPesees };
         const importedPesees = importedData.pesees;
+        let importedCount = 0;
         let lastPeseeId = currentPeseeId;
 
-        // Parcourt toutes les pesées importées
-        for (const id in importedPesees) {
-            if (importedPesees.hasOwnProperty(id)) {
-                const pesee = importedPesees[id];
-                
-                // Vérifie si l'ID existe déjà pour éviter d'écraser des données
-                // Si l'ID existe, on le remplace par un nouvel ID basé sur le temps
-                let newId = id;
-                if (pesees[id]) {
-                    newId = "pesee_" + Date.now() + "_" + importedCount;
-                    pesee.id = newId; 
-                }
-                
-                // Ajoute ou remplace la pesée
-                pesees[newId] = pesee;
-                lastPeseeId = newId; // Mémorise la dernière importée
-                importedCount++;
-            }
+        for (const [id, pesee] of Object.entries(importedPesees)) {
+            const newId = nextPesees[id] ? `pesee_${Date.now()}_${importedCount}` : id;
+            nextPesees[newId] = { ...pesee, id: newId };
+            lastPeseeId = newId;
+            importedCount++;
         }
 
-        savePesees();
-        
-        // Charge la dernière pesée importée
-        if (lastPeseeId) {
-             loadPesee(lastPeseeId);
+        pesees = nextPesees;
+        if (!(await savePesees())) {
+            pesees = previousPesees;
+            return;
         }
-       
+
+        if (lastPeseeId) loadPesee(lastPeseeId);
         hideImportModal();
-        showToast(`${importedCount} pesée(s) ajoutée(s) avec succès!`);
-
+        showToast(`${importedCount} pesée(s) importée(s) et sauvegardée(s) !`);
     } catch (err) {
         console.error("Erreur lors de l'importation de toutes les pesées:", err);
-        showToast("Fichier de sauvegarde complet invalide", "error");
+        showToast("Fichier de sauvegarde complet invalide", 'error');
     }
 }
 
