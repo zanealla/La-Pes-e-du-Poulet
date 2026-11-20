@@ -1,24 +1,9 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { eq } = require('drizzle-orm');
-const { drizzle } = require('drizzle-orm/node-postgres');
-const { jsonb, pgTable, text, timestamp } = require('drizzle-orm/pg-core');
-const { Pool } = require('pg');
+const { getPesees, savePesees } = require('./pesees-store');
 const app = express();
 const port = process.env.PORT || 7000;
-
-if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is required to persist pesée data');
-}
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
-const peseesStore = pgTable('pesees_store', {
-    id: text('id').primaryKey(),
-    data: jsonb('data').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
-});
 
 const dataDir = process.env.RAILWAY_VOLUME_PATH || path.join(__dirname, 'data');
 const dataFile = path.join(dataDir, 'pesees.json');
@@ -49,28 +34,7 @@ function readLegacyData() {
 
 app.get('/api/pesees', async (req, res) => {
     try {
-        let [saved] = await db
-            .select({ data: peseesStore.data })
-            .from(peseesStore)
-            .where(eq(peseesStore.id, 'global'))
-            .limit(1);
-
-        if (!saved) {
-            const legacyData = readLegacyData();
-            if (Object.keys(legacyData).length > 0) {
-                await db
-                    .insert(peseesStore)
-                    .values({ id: 'global', data: legacyData, updatedAt: new Date() })
-                    .onConflictDoNothing();
-                [saved] = await db
-                    .select({ data: peseesStore.data })
-                    .from(peseesStore)
-                    .where(eq(peseesStore.id, 'global'))
-                    .limit(1);
-            }
-        }
-
-        res.json(saved?.data || {});
+        res.json(await getPesees(readLegacyData()));
     } catch (error) {
         console.error('Error in GET /api/pesees:', error);
         res.status(500).json({ error: 'Failed to read data' });
@@ -84,13 +48,7 @@ app.post('/api/pesees', async (req, res) => {
     }
 
     try {
-        await db
-            .insert(peseesStore)
-            .values({ id: 'global', data, updatedAt: new Date() })
-            .onConflictDoUpdate({
-                target: peseesStore.id,
-                set: { data, updatedAt: new Date() },
-            });
+        await savePesees(data);
         res.json({ status: 'saved', timestamp: new Date().toISOString() });
     } catch (error) {
         console.error('Error in POST /api/pesees:', error);
